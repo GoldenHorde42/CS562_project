@@ -1,3 +1,6 @@
+# import wandb
+
+
 def train_go1(headless=True):
 
     import isaacgym
@@ -7,7 +10,7 @@ def train_go1(headless=True):
     from go1_gym.envs.base.legged_robot_config import Cfg
     from go1_gym.envs.go1.go1_config import config_go1
     from go1_gym.envs.go1.velocity_tracking import VelocityTrackingEasyEnv
-
+    
     from ml_logger import logger
 
     from go1_gym_learn.ppo_cse import Runner
@@ -15,7 +18,7 @@ def train_go1(headless=True):
     from go1_gym_learn.ppo_cse.actor_critic import AC_Args
     from go1_gym_learn.ppo_cse.ppo import PPO_Args
     from go1_gym_learn.ppo_cse import RunnerArgs
-
+    # wandb.init(project="gait-conditioned-agility", name=logger.utcnow(f'gait-conditioned-agility/%Y-%m-%d/{stem}/%H%M%S.%f'))
     config_go1(Cfg)
 
     Cfg.commands.num_lin_vel_bins = 30
@@ -150,9 +153,9 @@ def train_go1(headless=True):
 
 
 
-    Cfg.commands.lin_vel_x = [-1.0, 1.0]
-    Cfg.commands.lin_vel_y = [-0.6, 0.6]
-    Cfg.commands.ang_vel_yaw = [-1.0, 1.0]
+    Cfg.commands.lin_vel_x = [-0.5, 0.5]
+    Cfg.commands.lin_vel_y = [-0.5, 0.5]
+    Cfg.commands.ang_vel_yaw = [-0.5, 0.5]
     Cfg.commands.body_height_cmd = [-0.25, 0.15]
     Cfg.commands.gait_frequency_cmd_range = [2.0, 4.0]
     Cfg.commands.gait_phase_cmd_range = [0.0, 1.0]
@@ -165,9 +168,9 @@ def train_go1(headless=True):
     Cfg.commands.stance_width_range = [0.10, 0.45]
     Cfg.commands.stance_length_range = [0.35, 0.45]
 
-    Cfg.commands.limit_vel_x = [-5.0, 5.0]
-    Cfg.commands.limit_vel_y = [-0.6, 0.6]
-    Cfg.commands.limit_vel_yaw = [-5.0, 5.0]
+    Cfg.commands.limit_vel_x = [-0.5, 0.5]
+    Cfg.commands.limit_vel_y = [-0.5, 0.5]
+    Cfg.commands.limit_vel_yaw = [-0.5, 0.5]
     Cfg.commands.limit_body_height = [-0.25, 0.15]
     Cfg.commands.limit_gait_frequency = [2.0, 4.0]
     Cfg.commands.limit_gait_phase = [0.0, 1.0]
@@ -209,6 +212,11 @@ def train_go1(headless=True):
     # log the experiment parameters
     logger.log_params(AC_Args=vars(AC_Args), PPO_Args=vars(PPO_Args), RunnerArgs=vars(RunnerArgs),
                       Cfg=vars(Cfg))
+    
+    # wandb.config.update(vars(AC_Args))
+    # wandb.config.update(vars(PPO_Args))
+    # wandb.config.update(vars(RunnerArgs))
+    # wandb.config.update(vars(Cfg))
 
     env = HistoryWrapper(env)
     gpu_id = 0
@@ -220,7 +228,6 @@ if __name__ == '__main__':
     from pathlib import Path
     from ml_logger import logger
     from go1_gym import MINI_GYM_ROOT_DIR
-
     stem = Path(__file__).stem
     logger.configure(logger.utcnow(f'gait-conditioned-agility/%Y-%m-%d/{stem}/%H%M%S.%f'),
                      root=Path(f"{MINI_GYM_ROOT_DIR}/runs").resolve(), )
