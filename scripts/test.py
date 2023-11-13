@@ -9,6 +9,7 @@ from go1_gym.envs import *
 from go1_gym.envs.base.legged_robot_config import Cfg
 from go1_gym.envs.go1.go1_config import config_go1
 from go1_gym.envs.go1.velocity_tracking import VelocityTrackingEasyEnv
+from go1_gym.envs.navigation.navigator import Navigator
 
 
 def run_env(render=False, headless=False):
@@ -169,7 +170,7 @@ def run_env(render=False, headless=False):
 
     # 5 times per second
 
-    Cfg.env.num_envs = 3
+    Cfg.env.num_envs = 1
     Cfg.domain_rand.push_interval_s = 1
     Cfg.terrain.num_rows = 3
     Cfg.terrain.num_cols = 5
@@ -187,6 +188,9 @@ def run_env(render=False, headless=False):
 
     env = VelocityTrackingEasyEnv(sim_device='cuda:0', headless=False, cfg=Cfg)
     env.reset()
+
+    # env = Navigator(sim_device='cuda:0', headless=False, cfg=Cfg)
+    # env.reset()
 
     if render and headless:
         img = env.render(mode="rgb_array")

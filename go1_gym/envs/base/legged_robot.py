@@ -1506,6 +1506,16 @@ class LeggedRobot(BaseTask):
         asset_options.thickness = self.cfg.asset.thickness
         asset_options.disable_gravity = self.cfg.asset.disable_gravity
 
+        #Wall creation code
+        box_asset_options = gymapi.AssetOptions()
+        box_asset_options.density = 0  # High density for static behavior
+        box_asset_options.fix_base_link = True
+        wall_length = 4.0  # Length of the wall
+        wall_height = 1.0  # Height of the wall
+        wall_thickness = 0.5  # Thickness of the wall
+
+
+
         self.robot_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
         self.num_dof = self.gym.get_asset_dof_count(self.robot_asset)
         self.num_actuated_dof = self.num_actions
@@ -1569,6 +1579,22 @@ class LeggedRobot(BaseTask):
             self.gym.set_actor_rigid_body_properties(env_handle, anymal_handle, body_props, recomputeInertia=True)
             self.envs.append(env_handle)
             self.actor_handles.append(anymal_handle)
+
+
+            #adding walls
+            box_asset = self.gym.create_box(self.sim, wall_thickness, wall_height, wall_length, box_asset_options)
+
+            # Function to add a wall to a specific environment
+            def add_wall(env, position):
+                pose = gymapi.Transform()
+                pose.p = gymapi.Vec3(position[0], position[1], position[2])
+                pose.r = gymapi.Quat(0, 0, 0, 1)
+                wall_handle = self.gym.create_actor(env, box_asset, pose, "wall", 0, 1)
+                # Set additional properties if needed
+
+            # Add walls to the current environment
+            add_wall(env_handle, (0.0, -1.0, 0.5))  # Left wall
+            add_wall(env_handle, (0.0, 1.0, 0.5))   # Right wall
 
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
