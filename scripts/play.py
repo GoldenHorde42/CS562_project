@@ -142,11 +142,10 @@ def play_go1(headless=True):
     measured_lin_vels = np.zeros((num_eval_steps, 3))
     target_lin_vels = np.zeros((num_eval_steps, 3))
     joint_positions = np.zeros((num_eval_steps, 12))
-
+    print("was poppin")
     obs = env.reset()
-
+   
     cmd_idx = 0
-    print(env.unwrapped.metadata)
     try:
         for i in tqdm(range(num_eval_steps)):
             if i % 100 == 0 and i > 0:

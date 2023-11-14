@@ -711,7 +711,8 @@ class LeggedRobot(BaseTask):
     def _resample_commands(self, env_ids):
 
         if len(env_ids) == 0: return
-
+        #env_ids = torch.tensor([0], device='cuda:0')
+        #print("wow", env_ids)
         timesteps = int(self.cfg.commands.resampling_time / self.dt)
         ep_len = min(self.cfg.env.max_episode_length, timesteps)
 
@@ -982,10 +983,10 @@ class LeggedRobot(BaseTask):
                                                                device=self.device)
             self.root_states[env_ids, 0] += cfg.terrain.x_init_offset
             self.root_states[env_ids, 1] += cfg.terrain.y_init_offset
-        else:
-            # self.root_states[env_ids] = self.base_init_state
-            # self.root_states[env_ids, :3] += self.env_origins[env_ids]
-            print("here")
+        # else:
+        #     # self.root_states[env_ids] = self.base_init_state
+        #     # self.root_states[env_ids, :3] += self.env_origins[env_ids]
+        #     continue
 
         # base yaws
         init_yaws = torch_rand_float(-cfg.terrain.yaw_init_range,
@@ -1568,6 +1569,11 @@ class LeggedRobot(BaseTask):
         self._call_train_eval(self._randomize_rigid_body_props, torch.arange(self.num_envs, device=self.device))
         self._randomize_gravity()
 
+        
+        self.wall_actor_handles = []
+        self.robot_actor_idxs = []
+        self.wall_actor_idxs = []
+
         for i in range(self.num_envs):
             # create env instance
             env_handle = self.gym.create_env(self.sim, env_lower, env_upper, int(np.sqrt(self.num_envs)))
@@ -1587,8 +1593,9 @@ class LeggedRobot(BaseTask):
             body_props = self.gym.get_actor_rigid_body_properties(env_handle, anymal_handle)
             body_props = self._process_rigid_body_props(body_props, i)
             self.gym.set_actor_rigid_body_properties(env_handle, anymal_handle, body_props, recomputeInertia=True)
-            self.envs.append(env_handle)
+            
             self.actor_handles.append(anymal_handle)
+            self.robot_actor_idxs.append(self.gym.get_actor_index(env_handle, anymal_handle, gymapi.DOMAIN_SIM))
 
 
             #adding walls
@@ -1601,16 +1608,22 @@ class LeggedRobot(BaseTask):
                 pose.p = gymapi.Vec3(position[0], position[1], position[2])
                 pose.r = gymapi.Quat(0, 0, 0, 1)
                 wall_handle = self.gym.create_actor(env, box_asset, pose, "wall", 0, 1)
+                return wall_handle
                 # Set additional properties if needed
 
             # Add walls to the current environment
             
-            add_wall(env_handle, (2.25, -1.0, wall_height), box_asset)  # Left wall at -1m y-direction
-            add_wall(env_handle, (2.25, 1.0, wall_height), box_asset)   # Right wall at +1m y-direction
-            add_wall(env_handle, (-0.25, 0.0, wall_height), box_asset2) 
-            add_wall(env_handle, (4.75, 0.0, wall_height), box_asset2) 
+            wall_handle1 = add_wall(env_handle, (2.25, -1.0, wall_height), box_asset)  # Left wall at -1m y-direction
+            wall_handle2 = add_wall(env_handle, (2.25, 1.0, wall_height), box_asset)   # Right wall at +1m y-direction
+            wall_handle3 = add_wall(env_handle, (-0.25, 0.0, wall_height), box_asset2) 
+            wall_handle4 = add_wall(env_handle, (4.75, 0.0, wall_height), box_asset2) 
+            self.wall_actor_handles.extend([wall_handle1, wall_handle2, wall_handle3, wall_handle4])
+            self.wall_actor_idxs.extend([self.gym.get_actor_index(env_handle, wall_handle, gymapi.DOMAIN_SIM) for wall_handle in [wall_handle1, wall_handle2, wall_handle3, wall_handle4]])
 
+            self.envs.append(env_handle)
 
+        self.robot_actor_idxs = torch.tensor(self.robot_actor_idxs, device=self.device, dtype=torch.long)
+        self.wall_actor_idxs = torch.tensor(self.wall_actor_idxs, device=self.device, dtype=torch.long)
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
             self.feet_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0],
