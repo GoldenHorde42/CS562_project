@@ -173,6 +173,8 @@ def run_env(render=False, headless=False):
     Cfg.env.num_envs = 1
     Cfg.domain_rand.push_interval_s = 1
     Cfg.terrain.num_rows = 3
+    Cfg.terrain.mesh_type = 'plane'
+    Cfg.terrain.teleport_robots = False
     Cfg.terrain.num_cols = 5
     Cfg.terrain.border_size = 0
     Cfg.domain_rand.randomize_friction = True
@@ -185,6 +187,9 @@ def run_env(render=False, headless=False):
     Cfg.domain_rand.lag_timesteps = 6
     Cfg.domain_rand.randomize_lag_timesteps = True
     Cfg.control.control_type = "actuator_net"
+
+    Cfg.viewer.pos = [3, 0, 8]
+    Cfg.viewer.lookat = [3., 1, 0.]
 
     # env = VelocityTrackingEasyEnv(sim_device='cuda:0', headless=False, cfg=Cfg)
     # env.reset()

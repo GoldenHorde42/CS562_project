@@ -11,6 +11,7 @@ from go1_gym.envs import *
 from go1_gym.envs.base.legged_robot_config import Cfg
 from go1_gym.envs.go1.go1_config import config_go1
 from go1_gym.envs.go1.velocity_tracking import VelocityTrackingEasyEnv
+from go1_gym.envs.navigation.navigator import Navigator
 
 from tqdm import tqdm
 from gym.wrappers import RecordVideo
@@ -75,10 +76,18 @@ def load_env(label, headless=False):
     Cfg.domain_rand.randomize_lag_timesteps = True
     Cfg.control.control_type = "actuator_net"
 
+    Cfg.terrain.mesh_type = 'plane'
+    Cfg.terrain.teleport_robots = False
+    Cfg.viewer.pos = [3, 0, 8]
+    Cfg.viewer.lookat = [3., 1, 0.]
+
     from go1_gym.envs.wrappers.history_wrapper import HistoryWrapper
 
     env = VelocityTrackingEasyEnv(sim_device='cuda:0', headless=False, cfg=Cfg)
     env = HistoryWrapper(env)
+
+    # env = Navigator(sim_device='cuda:0', headless=False, cfg=Cfg)
+    # env = HistoryWrapper(env)
 
     # load policy
     from ml_logger import logger

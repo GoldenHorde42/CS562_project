@@ -498,6 +498,7 @@ class LeggedRobot(BaseTask):
                                        self.sim_params)
 
         mesh_type = self.cfg.terrain.mesh_type
+        print(mesh_type)
         if mesh_type in ['heightfield', 'trimesh']:
             if self.eval_cfg is not None:
                 self.terrain = Terrain(self.cfg.terrain, self.num_train_envs, self.eval_cfg.terrain, self.num_eval_envs)
@@ -982,8 +983,9 @@ class LeggedRobot(BaseTask):
             self.root_states[env_ids, 0] += cfg.terrain.x_init_offset
             self.root_states[env_ids, 1] += cfg.terrain.y_init_offset
         else:
-            self.root_states[env_ids] = self.base_init_state
-            self.root_states[env_ids, :3] += self.env_origins[env_ids]
+            # self.root_states[env_ids] = self.base_init_state
+            # self.root_states[env_ids, :3] += self.env_origins[env_ids]
+            print("here")
 
         # base yaws
         init_yaws = torch_rand_float(-cfg.terrain.yaw_init_range,
@@ -999,6 +1001,7 @@ class LeggedRobot(BaseTask):
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
                                                      gymtorch.unwrap_tensor(self.root_states),
                                                      gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+        # self.root_states[env_ids, 7:13] = 0
 
         if cfg.env.record_video and 0 in env_ids:
             if self.complete_video_frames is None:
@@ -1510,11 +1513,13 @@ class LeggedRobot(BaseTask):
         box_asset_options = gymapi.AssetOptions()
         box_asset_options.density = 0  # High density for static behavior
         box_asset_options.fix_base_link = True
-        wall_length = 4.0  # Length of the wall
-        wall_height = 1.0  # Height of the wall
-        wall_thickness = 0.5  # Thickness of the wall
+        wall_length = 2.0  # Length of the wall
+        wall_height = 0.1 # Height of the wall
+        wall_thickness = 5.0  # Thickness of the wall
 
-
+        wall2_length = 2.0
+        wall2_height = 2.0
+        wall2_thickness = 0.1
 
         self.robot_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
         self.num_dof = self.gym.get_asset_dof_count(self.robot_asset)
@@ -1538,8 +1543,13 @@ class LeggedRobot(BaseTask):
 
         base_init_state_list = self.cfg.init_state.pos + self.cfg.init_state.rot + self.cfg.init_state.lin_vel + self.cfg.init_state.ang_vel
         self.base_init_state = to_torch(base_init_state_list, device=self.device, requires_grad=False)
+        # start_pose = gymapi.Transform()
+        # start_pose.p = gymapi.Vec3(*self.base_init_state[:3])
+        #Setting custom starting point for the robot
+
         start_pose = gymapi.Transform()
-        start_pose.p = gymapi.Vec3(*self.base_init_state[:3])
+        start_pose.p = gymapi.Vec3(0.0, 0.0, 0.0) # Robot starts at the origin
+        start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0) # No rotation
 
         self.env_origins = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)
         self.terrain_levels = torch.zeros(self.num_envs, device=self.device, requires_grad=False, dtype=torch.long)
@@ -1561,12 +1571,12 @@ class LeggedRobot(BaseTask):
         for i in range(self.num_envs):
             # create env instance
             env_handle = self.gym.create_env(self.sim, env_lower, env_upper, int(np.sqrt(self.num_envs)))
-            pos = self.env_origins[i].clone()
-            pos[0:1] += torch_rand_float(-self.cfg.terrain.x_init_range, self.cfg.terrain.x_init_range, (1, 1),
-                                         device=self.device).squeeze(1)
-            pos[1:2] += torch_rand_float(-self.cfg.terrain.y_init_range, self.cfg.terrain.y_init_range, (1, 1),
-                                         device=self.device).squeeze(1)
-            start_pose.p = gymapi.Vec3(*pos)
+            # pos = self.env_origins[i].clone()
+            # pos[0:1] += torch_rand_float(-self.cfg.terrain.x_init_range, self.cfg.terrain.x_init_range, (1, 1),
+            #                              device=self.device).squeeze(1)
+            # pos[1:2] += torch_rand_float(-self.cfg.terrain.y_init_range, self.cfg.terrain.y_init_range, (1, 1),
+            #                              device=self.device).squeeze(1)
+            # start_pose.p = gymapi.Vec3(*pos)
 
             rigid_shape_props = self._process_rigid_shape_props(rigid_shape_props_asset, i)
             self.gym.set_asset_rigid_shape_properties(self.robot_asset, rigid_shape_props)
@@ -1583,9 +1593,10 @@ class LeggedRobot(BaseTask):
 
             #adding walls
             box_asset = self.gym.create_box(self.sim, wall_thickness, wall_height, wall_length, box_asset_options)
+            box_asset2 = self.gym.create_box(self.sim, wall2_thickness, wall2_height, wall2_length, box_asset_options)
 
             # Function to add a wall to a specific environment
-            def add_wall(env, position):
+            def add_wall(env, position, box_asset):
                 pose = gymapi.Transform()
                 pose.p = gymapi.Vec3(position[0], position[1], position[2])
                 pose.r = gymapi.Quat(0, 0, 0, 1)
@@ -1593,8 +1604,12 @@ class LeggedRobot(BaseTask):
                 # Set additional properties if needed
 
             # Add walls to the current environment
-            add_wall(env_handle, (0.0, -1.0, 0.5))  # Left wall
-            add_wall(env_handle, (0.0, 1.0, 0.5))   # Right wall
+            
+            add_wall(env_handle, (2.25, -1.0, wall_height), box_asset)  # Left wall at -1m y-direction
+            add_wall(env_handle, (2.25, 1.0, wall_height), box_asset)   # Right wall at +1m y-direction
+            add_wall(env_handle, (-0.25, 0.0, wall_height), box_asset2) 
+            add_wall(env_handle, (4.75, 0.0, wall_height), box_asset2) 
+
 
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
@@ -1615,19 +1630,34 @@ class LeggedRobot(BaseTask):
                                                                                         self.actor_handles[0],
                                                                                         termination_contact_names[i])
         # if recording video, set up camera
+
+        camera_x = 1.5  # Adjust as needed
+        camera_y = 1    # Adjust as needed
+        camera_z = 3.0  # Increase this value to elevate the camera
+
+        # Point the camera downwards
+        target_x = camera_x
+        target_y = camera_y
+        target_z = 0
         if self.cfg.env.record_video:
             self.camera_props = gymapi.CameraProperties()
             self.camera_props.width = 360
             self.camera_props.height = 240
             self.rendering_camera = self.gym.create_camera_sensor(self.envs[0], self.camera_props)
-            self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(1.5, 1, 3.0),
-                                         gymapi.Vec3(0, 0, 0))
+            # self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(1.5, 1, 3.0),
+            #                              gymapi.Vec3(0, 0, 0))
+            self.gym.set_camera_location(self.rendering_camera, self.envs[0], 
+                                 gymapi.Vec3(0.0, 0.0, 3.0),  # Camera position (adjust as needed)
+                                 gymapi.Vec3(0.0, 0.0, 0))   # Pointing straight down
             if self.eval_cfg is not None:
                 self.rendering_camera_eval = self.gym.create_camera_sensor(self.envs[self.num_train_envs],
                                                                            self.camera_props)
-                self.gym.set_camera_location(self.rendering_camera_eval, self.envs[self.num_train_envs],
-                                             gymapi.Vec3(1.5, 1, 3.0),
-                                             gymapi.Vec3(0, 0, 0))
+                # self.gym.set_camera_location(self.rendering_camera_eval, self.envs[self.num_train_envs],
+                #                              gymapi.Vec3(1.5, 1, 3.0),
+                #                              gymapi.Vec3(0, 0, 0))
+                self.gym.set_camera_location(self.rendering_camera_eval, self.envs[self.num_train_envs], 
+                                     gymapi.Vec3(0.0, 0.0, 3.0),  # Camera position (adjust as needed)
+                                     gymapi.Vec3(0.0, 0.0, 0))   # Pointing straight down
         self.video_writer = None
         self.video_frames = []
         self.video_frames_eval = []
@@ -1637,8 +1667,12 @@ class LeggedRobot(BaseTask):
     def render(self, mode="rgb_array"):
         assert mode == "rgb_array"
         bx, by, bz = self.root_states[0, 0], self.root_states[0, 1], self.root_states[0, 2]
-        self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(bx, by - 1.0, bz + 1.0),
-                                     gymapi.Vec3(bx, by, bz))
+        
+        # self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(bx, by - 1.0, bz + 1.0),
+        #                              gymapi.Vec3(bx, by, bz))
+        self.gym.set_camera_location(self.rendering_camera, self.envs[0], 
+                                 gymapi.Vec3(bx, by, bz + 1.0),  # Camera position above the object (adjust as needed)
+                                 gymapi.Vec3(bx, by, bz))        # Pointing straight down towards the object
         self.gym.step_graphics(self.sim)
         self.gym.render_all_camera_sensors(self.sim)
         img = self.gym.get_camera_image(self.sim, self.envs[0], self.rendering_camera, gymapi.IMAGE_COLOR)
@@ -1648,8 +1682,11 @@ class LeggedRobot(BaseTask):
     def _render_headless(self):
         if self.record_now and self.complete_video_frames is not None and len(self.complete_video_frames) == 0:
             bx, by, bz = self.root_states[0, 0], self.root_states[0, 1], self.root_states[0, 2]
-            self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(bx, by - 1.0, bz + 1.0),
-                                         gymapi.Vec3(bx, by, bz))
+            # self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(bx, by - 1.0, bz + 1.0),
+            #                              gymapi.Vec3(bx, by, bz))
+            self.gym.set_camera_location(self.rendering_camera, self.envs[0], 
+                                 gymapi.Vec3(bx, by, bz + 1.0),  # Camera position above the object (adjust as needed)
+                                 gymapi.Vec3(bx, by, bz))        # Pointing straight down towards the object
             self.video_frame = self.gym.get_camera_image(self.sim, self.envs[0], self.rendering_camera,
                                                          gymapi.IMAGE_COLOR)
             self.video_frame = self.video_frame.reshape((self.camera_props.height, self.camera_props.width, 4))
@@ -1660,9 +1697,12 @@ class LeggedRobot(BaseTask):
             if self.eval_cfg is not None:
                 bx, by, bz = self.root_states[self.num_train_envs, 0], self.root_states[self.num_train_envs, 1], \
                              self.root_states[self.num_train_envs, 2]
-                self.gym.set_camera_location(self.rendering_camera_eval, self.envs[self.num_train_envs],
-                                             gymapi.Vec3(bx, by - 1.0, bz + 1.0),
-                                             gymapi.Vec3(bx, by, bz))
+                # self.gym.set_camera_location(self.rendering_camera_eval, self.envs[self.num_train_envs],
+                #                              gymapi.Vec3(bx, by - 1.0, bz + 1.0),
+                #                              gymapi.Vec3(bx, by, bz))
+                self.gym.set_camera_location(self.rendering_camera, self.envs[0], 
+                                 gymapi.Vec3(bx, by, bz + 1.0),  # Camera position above the object (adjust as needed)
+                                 gymapi.Vec3(bx, by, bz))        # Pointing straight down towards the object
                 self.video_frame_eval = self.gym.get_camera_image(self.sim, self.envs[self.num_train_envs],
                                                                   self.rendering_camera_eval,
                                                                   gymapi.IMAGE_COLOR)

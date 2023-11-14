@@ -63,7 +63,7 @@ class Cfg(PrefixProto, cli=False):
         priv_observe_dummy_variable = False
 
     class terrain(PrefixProto, cli=False):
-        mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
+        mesh_type = 'plane'  # "heightfield" # none, plane, heightfield or trimesh
         horizontal_scale = 0.1  # [m]
         vertical_scale = 0.005  # [m]
         border_size = 0  # 25 # [m]
@@ -378,6 +378,7 @@ class Cfg(PrefixProto, cli=False):
 
     class noise(PrefixProto, cli=False):
         add_noise = True
+        # add_noise = False
         noise_level = 1.0  # scales other values
 
     class noise_scales(PrefixProto, cli=False):
