@@ -1018,41 +1018,64 @@ class LeggedRobot(BaseTask):
             env_ids (List[int]): Environemnt ids
         """
 
+        # #robot idx addition
+        # robot_env_ids = self.robot_actor_idxs[env_ids].to(device=self.device)
+        # # base position
+        # if self.custom_origins:
+        #     self.root_states[robot_env_ids] = self.base_init_state
+        #     self.root_states[robot_env_ids, :3] += self.env_origins[env_ids]
+        #     self.root_states[robot_env_ids, 0:1] += torch_rand_float(-cfg.terrain.x_init_range,
+        #                                                        cfg.terrain.x_init_range, (len(robot_env_ids), 1),
+        #                                                        device=self.device)
+        #     self.root_states[robot_env_ids, 1:2] += torch_rand_float(-cfg.terrain.y_init_range,
+        #                                                        cfg.terrain.y_init_range, (len(robot_env_ids), 1),
+        #                                                        device=self.device)
+        #     self.root_states[robot_env_ids, 0] += cfg.terrain.x_init_offset
+        #     self.root_states[robot_env_ids, 1] += cfg.terrain.y_init_offset
+        # else:
+        #     self.root_states[robot_env_ids] = self.base_init_state
+        #     self.root_states[robot_env_ids, :3] += self.env_origins[env_ids]
+            
+        # #revisit
+        # # base yaws 
+        # init_yaws = torch_rand_float(-cfg.terrain.yaw_init_range,
+        #                              cfg.terrain.yaw_init_range, (len(env_ids), 1),
+        #                              device=self.device)
+        # quat = quat_from_angle_axis(init_yaws, torch.Tensor([0, 0, 1]).to(self.device))[:, 0, :]
+        # self.root_states[env_ids, 3:7] = quat
+
+        # # base velocities
+        # self.root_states[robot_env_ids, 7:13] = torch_rand_float(-0.5, 0.5, (len(robot_env_ids), 6),
+        #                                                    device=self.device)  # [7:10]: lin vel, [10:13]: ang vel
+        # robot_env_ids_int32 = robot_env_ids.to(dtype=torch.int32)
+        # self.gym.set_actor_root_state_tensor_indexed(self.sim,
+        #                                              gymtorch.unwrap_tensor(self.root_states),
+        #                                              gymtorch.unwrap_tensor(robot_env_ids_int32), len(robot_env_ids_int32))
+        
         #robot idx addition
         robot_env_ids = self.robot_actor_idxs[env_ids].to(device=self.device)
+
         # base position
+        # If using custom origins, adjust the position by the offset, otherwise just use the initial state
         if self.custom_origins:
-            self.root_states[robot_env_ids] = self.base_init_state
-            self.root_states[robot_env_ids, :3] += self.env_origins[env_ids]
-            self.root_states[robot_env_ids, 0:1] += torch_rand_float(-cfg.terrain.x_init_range,
-                                                               cfg.terrain.x_init_range, (len(robot_env_ids), 1),
-                                                               device=self.device)
-            self.root_states[robot_env_ids, 1:2] += torch_rand_float(-cfg.terrain.y_init_range,
-                                                               cfg.terrain.y_init_range, (len(robot_env_ids), 1),
-                                                               device=self.device)
+            self.root_states[robot_env_ids, :3] = self.base_init_state[:3] + self.env_origins[env_ids]
             self.root_states[robot_env_ids, 0] += cfg.terrain.x_init_offset
             self.root_states[robot_env_ids, 1] += cfg.terrain.y_init_offset
         else:
-            self.root_states[robot_env_ids] = self.base_init_state
-            self.root_states[robot_env_ids, :3] += self.env_origins[env_ids]
             
-        #revisit
-        # base yaws 
-        init_yaws = torch_rand_float(-cfg.terrain.yaw_init_range,
-                                     cfg.terrain.yaw_init_range, (len(env_ids), 1),
-                                     device=self.device)
-        quat = quat_from_angle_axis(init_yaws, torch.Tensor([0, 0, 1]).to(self.device))[:, 0, :]
-        self.root_states[env_ids, 3:7] = quat
+            self.root_states[robot_env_ids, :3] = self.base_init_state[:3]
+            print("zamn", self.root_states[robot_env_ids, :3])
 
-        # base velocities
-        self.root_states[robot_env_ids, 7:13] = torch_rand_float(-0.5, 0.5, (len(robot_env_ids), 6),
-                                                           device=self.device)  # [7:10]: lin vel, [10:13]: ang vel
+        # Setting the orientation to a fixed value (e.g., initial state) instead of randomizing
+        self.root_states[robot_env_ids, 3:7] = self.base_init_state[3:7]
+        print("zamn", self.root_states[robot_env_ids, 3:7])
+        # base velocities set to zero instead of randomizing
+        self.root_states[robot_env_ids, 7:13] = 0.0  # Setting linear and angular velocities to zero
+
         robot_env_ids_int32 = robot_env_ids.to(dtype=torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
-                                                     gymtorch.unwrap_tensor(self.root_states),
-                                                     gymtorch.unwrap_tensor(robot_env_ids_int32), len(robot_env_ids_int32))
-        # self.root_states[env_ids, 7:13] = 0
-
+                                                    gymtorch.unwrap_tensor(self.root_states),
+                                                    gymtorch.unwrap_tensor(robot_env_ids_int32), len(robot_env_ids_int32))
         if cfg.env.record_video and 0 in env_ids:
             if self.complete_video_frames is None:
                 self.complete_video_frames = []

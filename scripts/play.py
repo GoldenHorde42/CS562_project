@@ -78,8 +78,11 @@ def load_env(label, headless=False):
 
     Cfg.terrain.mesh_type = 'plane'
     Cfg.terrain.teleport_robots = False
+    
     Cfg.viewer.pos = [3, 0, 8]
     Cfg.viewer.lookat = [3., 1, 0.]
+
+    Cfg.init_state.pos = [0.5, 0.0, 0.5]
 
     from go1_gym.envs.wrappers.history_wrapper import HistoryWrapper
 
@@ -114,7 +117,7 @@ def play_go1(headless=True):
     frame = env.render(mode="rgb_array")
     height, width, layers = frame.shape
     out = cv2.VideoWriter('new_output.mp4', fourcc, 20.0, (width, height))
-    num_eval_steps = 500
+    num_eval_steps = 600
     gaits = {"pronking": [0, 0, 0],
              "trotting": [0.5, 0, 0],
              "bounding": [0, 0.5, 0],
@@ -122,11 +125,13 @@ def play_go1(headless=True):
 
     # x_vel_cmd, y_vel_cmd, yaw_vel_cmd = 1.5, 0.0, 0.0
     commands_sequence = [
-        (0.4, 0, 0.0),     # Forward
-        (0, -0.3, 0.0),   # Left
-        (-0.3, 0, 0.0),   # Backward
-        (0, 0.5, 0.0),    # Right
-        (0, 0, -0.5)   # Left rotation
+        (1.0, 0.0, 0.0),     # Forward
+        (0.0, 0.0, 1.0),
+        (1.0, 0.0, 0.0)
+        # (0, -0.3, 0.0),   # Left
+        # (-0.3, 0, 0.0),   # Backward
+        # (0, 0.5, 0.0),    # Right
+        # (0, 0, -0.5)   # Left rotation
     ]
 
     body_height_cmd = 0.0
@@ -148,7 +153,7 @@ def play_go1(headless=True):
     cmd_idx = 0
     try:
         for i in tqdm(range(num_eval_steps)):
-            if i % 100 == 0 and i > 0:
+            if i % 200 == 0 and i > 0:
                 cmd_idx += 1
             x_vel_cmd, y_vel_cmd, yaw_vel_cmd = commands_sequence[cmd_idx]
             with torch.no_grad():
