@@ -169,8 +169,8 @@ def run_env(render=False, headless=False):
     Cfg.commands.gaitwise_curricula = True
 
     # 5 times per second
-
-    Cfg.env.num_envs = 1
+    Cfg.env.env_spacing = 5.25
+    Cfg.env.num_envs = 10
     Cfg.domain_rand.push_interval_s = 1
     Cfg.terrain.num_rows = 3
     Cfg.terrain.mesh_type = 'plane'

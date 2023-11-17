@@ -1063,12 +1063,12 @@ class LeggedRobot(BaseTask):
             self.root_states[robot_env_ids, 1] += cfg.terrain.y_init_offset
         else:
             
-            self.root_states[robot_env_ids, :3] = self.base_init_state[:3]
-            print("zamn", self.root_states[robot_env_ids, :3])
+            self.root_states[robot_env_ids, :3] = self.base_init_state[:3] + self.env_origins[env_ids]
+            # print(self.root_states[robot_env_ids, :3])
 
         # Setting the orientation to a fixed value (e.g., initial state) instead of randomizing
         self.root_states[robot_env_ids, 3:7] = self.base_init_state[3:7]
-        print("zamn", self.root_states[robot_env_ids, 3:7])
+        # print("zamn", self.root_states[robot_env_ids, 3:7])
         # base velocities set to zero instead of randomizing
         self.root_states[robot_env_ids, 7:13] = 0.0  # Setting linear and angular velocities to zero
 
@@ -1605,7 +1605,7 @@ class LeggedRobot(BaseTask):
 
         #Wall creation code
         box_asset_options = gymapi.AssetOptions()
-        box_asset_options.density = 0  # High density for static behavior
+        box_asset_options.density = 1000  # High density for static behavior
         box_asset_options.fix_base_link = True
         wall_length = 2.0  # Length of the wall
         wall_height = 0.1 # Height of the wall
@@ -1694,24 +1694,43 @@ class LeggedRobot(BaseTask):
             #adding walls
             box_asset = self.gym.create_box(self.sim, wall_thickness, wall_height, wall_length, box_asset_options)
             box_asset2 = self.gym.create_box(self.sim, wall2_thickness, wall2_height, wall2_length, box_asset_options)
-
             # Function to add a wall to a specific environment
-            def add_wall(env, position, box_asset):
+            # def add_wall(env, position, box_asset):
+            #     pose = gymapi.Transform()
+            #     pose.p = gymapi.Vec3(position[0], position[1], position[2])
+            #     pose.r = gymapi.Quat(0, 0, 0, 1)
+            #     wall_handle = self.gym.create_actor(env, box_asset, pose, "wall", 0, 1)
+            #     return wall_handle
+            #     # Set additional properties if needed
+            
+            def add_wall(env, base_position, offset, box_asset):
                 pose = gymapi.Transform()
-                pose.p = gymapi.Vec3(position[0], position[1], position[2])
+                pose.p = gymapi.Vec3(base_position[0] + offset[0], base_position[1] + offset[1], base_position[2] + offset[2])
                 pose.r = gymapi.Quat(0, 0, 0, 1)
-                wall_handle = self.gym.create_actor(env, box_asset, pose, "wall", 0, 1)
+                wall_handle = self.gym.create_actor(env, box_asset, pose, "wall", i, 1)
+                # wall_properties = self.gym.get_actor_rigid_shape_properties(env_handle, wall_handle)
+                # print(i.density for i in wall_properties)
                 return wall_handle
-                # Set additional properties if needed
+            
+            env_origin = self.env_origins[i].clone()
+
+            # Add walls to the current environment with positions relative to the environment's origin
+            wall_handle1 = add_wall(env_handle, env_origin, (2.25, -1.0, wall_height), box_asset)  # Left wall
+            wall_handle2 = add_wall(env_handle, env_origin, (2.25, 1.0, wall_height), box_asset)   # Right wall
+            wall_handle3 = add_wall(env_handle, env_origin, (-0.25, 0.0, wall_height), box_asset2) 
+            wall_handle4 = add_wall(env_handle, env_origin, (4.75, 0.0, wall_height), box_asset2) 
+            self.wall_actor_handles.extend([wall_handle1, wall_handle2, wall_handle3, wall_handle4])
+            self.wall_actor_idxs.extend([self.gym.get_actor_index(env_handle, wall_handle, gymapi.DOMAIN_SIM) for wall_handle in [wall_handle1, wall_handle2, wall_handle3, wall_handle4]])
+
 
             # Add walls to the current environment
             
-            wall_handle1 = add_wall(env_handle, (2.25, -1.0, wall_height), box_asset)  # Left wall at -1m y-direction
-            wall_handle2 = add_wall(env_handle, (2.25, 1.0, wall_height), box_asset)   # Right wall at +1m y-direction
-            wall_handle3 = add_wall(env_handle, (-0.25, 0.0, wall_height), box_asset2) 
-            wall_handle4 = add_wall(env_handle, (4.75, 0.0, wall_height), box_asset2) 
-            self.wall_actor_handles.extend([wall_handle1, wall_handle2, wall_handle3, wall_handle4])
-            self.wall_actor_idxs.extend([self.gym.get_actor_index(env_handle, wall_handle, gymapi.DOMAIN_SIM) for wall_handle in [wall_handle1, wall_handle2, wall_handle3, wall_handle4]])
+            # wall_handle1 = add_wall(env_handle, (2.25, -1.0, wall_height), box_asset)  # Left wall at -1m y-direction
+            # wall_handle2 = add_wall(env_handle, (2.25, 1.0, wall_height), box_asset)   # Right wall at +1m y-direction
+            # wall_handle3 = add_wall(env_handle, (-0.25, 0.0, wall_height), box_asset2) 
+            # wall_handle4 = add_wall(env_handle, (4.75, 0.0, wall_height), box_asset2) 
+            # self.wall_actor_handles.extend([wall_handle1, wall_handle2, wall_handle3, wall_handle4])
+            # self.wall_actor_idxs.extend([self.gym.get_actor_index(env_handle, wall_handle, gymapi.DOMAIN_SIM) for wall_handle in [wall_handle1, wall_handle2, wall_handle3, wall_handle4]])
 
             self.envs.append(env_handle)
 
@@ -1884,7 +1903,8 @@ class LeggedRobot(BaseTask):
             # create a grid of robots
             num_cols = np.floor(np.sqrt(len(env_ids)))
             num_rows = np.ceil(self.num_envs / num_cols)
-            xx, yy = torch.meshgrid(torch.arange(num_rows), torch.arange(num_cols))
+            # xx, yy = torch.meshgrid(torch.arange(num_rows), torch.arange(num_cols))
+            xx, yy = torch.meshgrid(torch.arange(num_rows, device=self.device), torch.arange(num_cols, device=self.device))
             spacing = cfg.env.env_spacing
             self.env_origins[env_ids, 0] = spacing * xx.flatten()[:len(env_ids)]
             self.env_origins[env_ids, 1] = spacing * yy.flatten()[:len(env_ids)]

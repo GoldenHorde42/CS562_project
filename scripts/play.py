@@ -64,7 +64,7 @@ def load_env(label, headless=False):
 
     Cfg.env.num_recording_envs = 1
     Cfg.env.record_video = True
-    Cfg.env.num_envs = 1
+    Cfg.env.num_envs = 100
     Cfg.terrain.num_rows = 5
     Cfg.terrain.num_cols = 5
     Cfg.terrain.border_size = 0
@@ -78,7 +78,7 @@ def load_env(label, headless=False):
 
     Cfg.terrain.mesh_type = 'plane'
     Cfg.terrain.teleport_robots = False
-    
+    Cfg.env.env_spacing = 5.25
     Cfg.viewer.pos = [3, 0, 8]
     Cfg.viewer.lookat = [3., 1, 0.]
 
