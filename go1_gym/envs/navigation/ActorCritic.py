@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 # Actor-Critic Network
 class ActorCriticNetwork(nn.Module):
-    def __init__(self, state_dim, action_dim=9):  # Assuming 9 discrete actions
+    def __init__(self, state_dim, action_dim):
         super(ActorCriticNetwork, self).__init__()
         
         # Shared layers
@@ -14,36 +14,59 @@ class ActorCriticNetwork(nn.Module):
             nn.Linear(128, 128),
             nn.ReLU()
         )
+        self._init_weights(self.shared_layers)
 
-        # Actor (policy) layers
-        self.policy_layers = nn.Sequential(
+        # Actor layers for mean of actions
+        self.actor_mu = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, action_dim)  # Output layer for discrete actions
+            nn.Linear(64, action_dim)  # Outputs mean for each action dimension
         )
+        self._init_weights(self.actor_mu)
 
-        # Critic (value) layers
-        self.value_layers = nn.Sequential(
+        # Actor layers for standard deviation of actions
+        self.actor_sigma = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, action_dim)  # Outputs log standard deviation for each action dimension
+        )
+        self._init_weights(self.actor_sigma)
+
+        # Initialize the sigma to a small number to start with exploration
+        self.actor_sigma[-1].weight.data.fill_(0.0)
+        self.actor_sigma[-1].bias.data.fill_(-1.0)
+
+        # Critic layers
+        self.critic = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
             nn.Linear(64, 1)  # Single value output
         )
+        self._init_weights(self.critic)
 
     def forward(self, state):
-        # Shared layers processing
         x = self.shared_layers(state)
+        mu = self.actor_mu(x)
+        sigma = torch.exp(self.actor_sigma(x).clamp(min=-20, max=2))  # Clamp to avoid extreme values
+        value = self.critic(x)
+        return mu, sigma, value
 
-        # Policy output (logits for discrete actions)
-        policy_logits = self.policy_layers(x)
+    def act(self, state):
+        mu, sigma, _ = self.forward(state)
+        dist = torch.distributions.Normal(mu, sigma)
+        action = dist.sample()
+        action_logprob = dist.log_prob(action).sum(-1)
+        return action, action_logprob
 
-        # Value output
-        value = self.value_layers(x)
+    def evaluate(self, state, action):
+        mu, sigma, value = self.forward(state)
+        dist = torch.distributions.Normal(mu, sigma)
+        action_logprob = dist.log_prob(action).sum(-1)
+        dist_entropy = dist.entropy().sum(-1)
+        return action_logprob, torch.squeeze(value), dist_entropy
 
-        return policy_logits, value
-
-    def policy(self, state):
-        policy_logits = self.forward(state)[0]
-        return F.softmax(policy_logits, dim=-1)
-
-    def value(self, state):
-        return self.forward(state)[1]
+    def _init_weights(self, module):
+        for m in module.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                nn.init.zeros_(m.bias)
