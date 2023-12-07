@@ -17,6 +17,7 @@ from go1_gym import MINI_GYM_ROOT_DIR
 import glob
 import os
 import torch
+import cv2
 
 def load_policy(logdir):
     body = torch.jit.load(logdir + '/checkpoints/body_latest.jit')
@@ -133,30 +134,61 @@ def load_env(label, headless=False):
 
 #     return reward
 
+# def calculate_reward(state_tensor, goal_position, wall_positions, wall_threshold, step):
+#     state_array = state_tensor.cpu().numpy()
+#     robot_position = state_array[:3]
+
+#     # Reward for getting closer to the goal
+#     goal_distance = np.linalg.norm(robot_position - np.array(goal_position))
+#     if step%75 == 0:
+#         print(robot_position, goal_position)
+#     reward = -10.0 * goal_distance  # Significantly increased negative impact for distance to the goal
+
+#     return reward
+
+"""
+Below reward function also promotes getting closer to the goal
+"""
+
 def calculate_reward(state_tensor, goal_position, wall_positions, wall_threshold, step):
     state_array = state_tensor.cpu().numpy()
     robot_position = state_array[:3]
 
-    # Reward for getting closer to the goal
+    # Scaled distance to the goal
     goal_distance = np.linalg.norm(robot_position - np.array(goal_position))
-    if step%75 == 0:
-        print(robot_position, goal_position)
-    reward = -10.0 * goal_distance  # Significantly increased negative impact for distance to the goal
+    
+    # Reward for moving towards the goal
+    # This could be a large negative value that becomes less negative (or even positive) as the robot approaches the goal
+    reward = -100 * goal_distance  # Increased scale factor for goal distance
 
-    # Optional: Reduce or remove the wall penalty for this test
-    # for wall_position in wall_positions:
-    #     wall_distance = np.linalg.norm(robot_position - np.array(wall_position))
-    #     if wall_distance < wall_threshold:
-    #         reward -= 10  # Large penalty for being too close to a wall
+    # Penalize touching or being too close to the walls
+    for wall_position in wall_positions:
+        wall_distance = np.linalg.norm(robot_position - np.array(wall_position))
+        if wall_distance < wall_threshold:
+            # A very large negative reward for being too close to or touching a wall
+            reward -= 5000  # Large penalty for touching walls
+
+    # Small step penalty to encourage efficiency
+    reward -= 0.01  # Small penalty for each step taken
+
+    # Large reward for reaching the goal
+    if goal_distance < 0.2:  # Threshold for reaching the goal
+        reward += 5000  # Large reward for reaching the goal
+
+    # Debugging information
+    print(goal_distance)
+    if step % 75 == 0:
+        print(f"Step: {step}, Position: {robot_position}, Goal: {goal_position}, Reward: {reward}")
+        
 
     return reward
 
 
 def map_continuous_action_to_velocities(action, step):
     
-    max_linear_velocity = 1.0  # Adjust as needed
-    max_angular_velocity = 1.0  # Adjust as needed
-
+    max_linear_velocity = 1.0  
+    max_angular_velocity = 1.0  
+    action = np.clip(action, -1, 1)
     x_vel_cmd = action[0] * max_linear_velocity
     y_vel_cmd = action[1] * max_linear_velocity
     yaw_vel_cmd = action[2] * max_angular_velocity
@@ -164,18 +196,21 @@ def map_continuous_action_to_velocities(action, step):
         print("Velocities", x_vel_cmd, y_vel_cmd, yaw_vel_cmd)
     return x_vel_cmd, y_vel_cmd, yaw_vel_cmd
 
-state_dim = 13 #(pos (3), quat(4), lin vel(3), ang vel(3))
+state_dim = 16 #(pos (3), quat(4), lin vel(3), ang vel(3))
 action_dim = 3 
 
 # Load the trained high-level policy model
 high_level_policy = ActorCriticNetwork(state_dim, action_dim)
-checkpoint = torch.load("model_ep10.pth")
+checkpoint = torch.load("model_ep20.pth")
 high_level_policy.load_state_dict(checkpoint['model_state_dict'])
 
 
 # Load the environment and low-level policy
 env, low_level_policy = load_env("gait-conditioned-agility/2023-10-17/train", headless=False)
-
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+frame = env.render(mode="rgb_array")
+height, width, layers = frame.shape
+out = cv2.VideoWriter('new_output.mp4', fourcc, 20.0, (width, height))
 # Goal position and wall positions
 goal_position = [4.5, 0.0, 0.1]
 wall_positions = [
@@ -186,7 +221,11 @@ wall_positions = [
 ]
 
 wall_threshold = 0.5
-
+def normalize_state_values(state):
+    # Normalize the state values to a consistent scale
+    # For example, you might scale positions and velocities to a [-1, 1] range
+    # Implement the normalization logic
+    return state
 def play_episode(max_steps):
     obs = env.reset()
     cumulative_reward = 0
@@ -207,7 +246,10 @@ def play_episode(max_steps):
         # High-level policy action
         robot_state = env.get_robot_state()
         state_vector = np.concatenate([component.cpu().numpy().flatten() for component in robot_state])
-        state_tensor = torch.tensor(state_vector, dtype=torch.float32)
+        relative_goal_position = np.array(goal_position) - state_vector[:3]  # Assuming first 3 elements are position
+        augmented_state_vector = np.concatenate([state_vector, relative_goal_position])
+        normalized_state_vector = normalize_state_values(augmented_state_vector)
+        state_tensor = torch.tensor(normalized_state_vector, dtype=torch.float32)
         with torch.no_grad():
             action, _ = high_level_policy.act(state_tensor)
 
@@ -222,7 +264,7 @@ def play_episode(max_steps):
         # env.commands[:, 0] = 1.0
         # env.commands[:, 1] = 0.0
         # env.commands[:, 2] = 0.0
-        print(env.commands[:, 0],env.commands[:, 1],env.commands[:, 2])
+        # print(env.commands[:, 0],env.commands[:, 1],env.commands[:, 2])
         env.commands[:, 3] = body_height_cmd
         env.commands[:, 4] = step_frequency_cmd
         env.commands[:, 5:8] = gait
@@ -234,6 +276,9 @@ def play_episode(max_steps):
 
         
         obs, rew, done, info = env.step(actions)
+        frame = env.render(mode="rgb_array")
+        frame = frame[:, :, :3]
+        out.write(frame)
         new_robot_state = env.get_robot_state()
         new_state_vector = np.concatenate([component.cpu().numpy().flatten() for component in new_robot_state])
         with torch.no_grad():
@@ -247,7 +292,7 @@ def play_episode(max_steps):
             break
 
     print(f"Total Reward: {cumulative_reward}")
-
+    out.release()
 # Play for one episode
 max_steps_per_episode = 750
 play_episode(max_steps_per_episode)

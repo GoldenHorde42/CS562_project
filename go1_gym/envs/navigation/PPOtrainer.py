@@ -10,6 +10,7 @@ class PPOTrainer:
         self.k_epochs = k_epochs
         self.optimizer = optim.Adam(actor_critic.parameters(), lr=policy_lr)
         self.memory = []
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=100, gamma=0.9)
 
     def store_transition(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
@@ -31,6 +32,10 @@ class PPOTrainer:
             _, old_logprobs, _ = self.actor_critic.evaluate(states, actions)
             next_state_values = self.actor_critic(next_states)[2].squeeze()
 
+        policy_losses = []
+        value_losses = []
+        total_losses = []
+
         for _ in range(self.k_epochs):
             logprobs, state_values, dist_entropy = self.actor_critic.evaluate(states, actions)
             advantages = self.calculate_advantages(rewards, state_values, next_state_values, dones)
@@ -42,8 +47,21 @@ class PPOTrainer:
             total_loss = policy_loss + value_loss
             self.optimizer.zero_grad()
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.actor_critic.parameters(), 1.0)  # Gradient clipping
+            torch.nn.utils.clip_grad_norm_(self.actor_critic.parameters(), 0.5)
             self.optimizer.step()
+
+            # Record losses
+            policy_losses.append(policy_loss.item())
+            value_losses.append(value_loss.item())
+            total_losses.append(total_loss.item())
+
+        # Output average losses
+        avg_policy_loss = sum(policy_losses) / len(policy_losses)
+        avg_value_loss = sum(value_losses) / len(value_losses)
+        avg_total_loss = sum(total_losses) / len(total_losses)
+        print(f"Average Policy Loss: {avg_policy_loss}, Average Value Loss: {avg_value_loss}, Average Total Loss: {avg_total_loss}")
+
+        self.scheduler.step()
 
     def calculate_advantages(self, rewards, state_values, next_state_values, dones, gae_lambda=0.95):
         gae = 0

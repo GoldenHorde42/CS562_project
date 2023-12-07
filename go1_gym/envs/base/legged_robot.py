@@ -88,6 +88,7 @@ class LeggedRobot(BaseTask):
         return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras
     def get_robot_state(self):
         return(self.base_pos[:], self.base_quat[:], self.base_lin_vel[:], self.base_ang_vel[:] )
+        # return(self.base_pos[:])
         
         
         
@@ -1694,18 +1695,9 @@ class LeggedRobot(BaseTask):
             self.actor_handles.append(anymal_handle)
             self.robot_actor_idxs.append(self.gym.get_actor_index(env_handle, anymal_handle, gymapi.DOMAIN_SIM))
 
-
             #adding walls
             box_asset = self.gym.create_box(self.sim, wall_thickness, wall_height, wall_length, box_asset_options)
             box_asset2 = self.gym.create_box(self.sim, wall2_thickness, wall2_height, wall2_length, box_asset_options)
-            # Function to add a wall to a specific environment
-            # def add_wall(env, position, box_asset):
-            #     pose = gymapi.Transform()
-            #     pose.p = gymapi.Vec3(position[0], position[1], position[2])
-            #     pose.r = gymapi.Quat(0, 0, 0, 1)
-            #     wall_handle = self.gym.create_actor(env, box_asset, pose, "wall", 0, 1)
-            #     return wall_handle
-            #     # Set additional properties if needed
             
             def add_wall(env, base_position, offset, box_asset):
                 pose = gymapi.Transform()
@@ -1801,9 +1793,12 @@ class LeggedRobot(BaseTask):
         bx, by, bz = self.root_states[self.robot_actor_idxs[0], 0], self.root_states[self.robot_actor_idxs[0], 1], self.root_states[self.robot_actor_idxs[0], 2]
         # self.gym.set_camera_location(self.rendering_camera, self.envs[0], gymapi.Vec3(bx, by - 1.0, bz + 1.0),
         #                              gymapi.Vec3(bx, by, bz))
+        # self.gym.set_camera_location(self.rendering_camera, self.envs[0], 
+        #                          gymapi.Vec3(bx, by, bz + 1.0),  # Camera position above the object (adjust as needed)
+        #                          gymapi.Vec3(bx, by, bz))        # Pointing straight down towards the object
         self.gym.set_camera_location(self.rendering_camera, self.envs[0], 
-                                 gymapi.Vec3(bx, by, bz + 1.0),  # Camera position above the object (adjust as needed)
-                                 gymapi.Vec3(bx, by, bz))        # Pointing straight down towards the object
+                                 gymapi.Vec3(3.0, 0.0, 8.0),  # Camera position above the object (adjust as needed)
+                                 gymapi.Vec3(3.0, 1.0, 0.0))        # Pointing straight down towards the object
         self.gym.step_graphics(self.sim)
         self.gym.render_all_camera_sensors(self.sim)
         img = self.gym.get_camera_image(self.sim, self.envs[0], self.rendering_camera, gymapi.IMAGE_COLOR)

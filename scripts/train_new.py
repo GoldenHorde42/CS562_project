@@ -104,18 +104,21 @@ def load_env(label, headless=False):
 
     return env, policy
 
-state_dim = 13 #(pos (3), quat(4), lin vel(3), ang vel(3))
+state_dim = 16 #(pos (3), quat(4), lin vel(3), ang vel(3), goal pos(3))
 action_dim = 3  
 
 policy_lr = 0.0003
 value_lr = 0.001
-
 gamma = 0.99
-eps_clip = 0.2
-k_epochs = 4
+eps_clip = 0.05
+k_epochs = 8
 
 # Initialize high-level Actor-Critic Network and PPOTrainer
+# high_level_policy = ActorCriticNetwork(state_dim, action_dim)
+
 high_level_policy = ActorCriticNetwork(state_dim, action_dim)
+# checkpoint = torch.load("model_ep0.pth")
+# high_level_policy.load_state_dict(checkpoint['model_state_dict'])
 ppo_trainer = PPOTrainer(high_level_policy, policy_lr, value_lr, gamma, eps_clip, k_epochs)
 
 # Load low-level locomotion policy
@@ -125,53 +128,47 @@ env, low_level_policy = load_env(label, headless=True)
 
 import numpy as np
 
-"""
-Below reward function uses distance from wall as well
-"""
-
-# def calculate_reward(state_tensor, goal_position, wall_positions, wall_threshold, step):
-#     # Ensure state_tensor is on CPU and converted to numpy for calculations
-#     state_array = state_tensor.cpu().numpy()
-
-#     # Extract robot position from the state tensor
-#     # Assuming the first 3 elements are the robot's position
-#     robot_position = state_array[:3]
-
-#     # Reward for getting closer to the goal
-#     goal_distance = np.linalg.norm(robot_position - np.array(goal_position))
-#     if step%75 == 0:
-#         print(robot_position, goal_position)
-#     reward = -goal_distance  # Negative distance to the goal
-
-#     # Penalty for getting too close to walls
-#     for wall_position in wall_positions:
-#         wall_distance = np.linalg.norm(robot_position - np.array(wall_position))
-#         if wall_distance < wall_threshold:
-#             reward -= 10  # Large penalty for being too close to a wall
-
-#     return reward
-
-"""
-Below reward function aggresively marches towards the goal state
-"""
-
 def calculate_reward(state_tensor, goal_position, wall_positions, wall_threshold, step):
+    touchwall = 0
     state_array = state_tensor.cpu().numpy()
     robot_position = state_array[:3]
 
-    # Reward for getting closer to the goal
+    # Scaled distance to the goal
     goal_distance = np.linalg.norm(robot_position - np.array(goal_position))
-    if step%75 == 0:
-        print(robot_position, goal_position)
-    reward = -30.0 * goal_distance  # Significantly increased negative impact for distance to the goal
-    return reward
+
+    # Positive reward for getting closer to the goal
+    # The closer the robot gets to the goal, the larger the positive reward
+    reward = 10 / (goal_distance + 1e-6)  # Use inverse of distance to increase reward as distance decreases
+
+    # Penalize for being too close to the walls
+    for wall_position in wall_positions:
+        wall_distance = np.linalg.norm(robot_position - np.array(wall_position))
+        if wall_distance < wall_threshold:
+            reward -= 1000  # Penalty for being too close to walls
+            touchwall = 1
+
+    # Step penalty to encourage efficiency
+    reward -= 5  # Penalty for each step taken
+
+    # Large reward for reaching the goal
+    if goal_distance < 0.5:  # Threshold for reaching the goal
+        reward += 1000  # Reward for reaching the goal
+
+    # Debugging information
+    if step % 75 == 0:
+        print(f"Step: {step}, Goal Distance: {goal_distance}, Reward: {reward}")
+
+    return reward, touchwall
+
+
+
 
 
 def map_continuous_action_to_velocities(action, step):
     
-    max_linear_velocity = 1.0  # Adjust as needed
-    max_angular_velocity = 1.0  # Adjust as needed
-
+    max_linear_velocity = 1.0  
+    max_angular_velocity = 1.0  
+    action = np.clip(action, -0.5, 0.5)
     x_vel_cmd = action[0] * max_linear_velocity
     y_vel_cmd = action[1] * max_linear_velocity
     yaw_vel_cmd = action[2] * max_angular_velocity
@@ -186,8 +183,20 @@ def save_model(model, optimizer, epoch, filename="ppo_model.pth"):
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
     }, filename)
+# Function to simplify quaternion to Euler angles (or another representation)
+def quaternion_to_euler(quaternion):
+    # Assuming quaternion is in the format [x, y, z, w]
+    # Implement the conversion to Euler angles or another simpler format
+    # Return the simplified orientation representation
+    pass
 
-def train_high_level_policy(num_episodes, max_steps_per_episode, goal_position, wall_positions, wall_threshold):
+# Function to normalize state values
+def normalize_state_values(state):
+    # Normalize the state values to a consistent scale
+    # For example, you might scale positions and velocities to a [-1, 1] range
+    # Implement the normalization logic
+    return state
+def train_high_level_policy(num_episodes, max_steps_per_episode, goal_position, wall_positions, wall_threshold, batch_size=256):
     gaits = {"pronking": [0, 0, 0],
              "trotting": [0.5, 0, 0],
              "bounding": [0, 0.5, 0],
@@ -199,18 +208,26 @@ def train_high_level_policy(num_episodes, max_steps_per_episode, goal_position, 
     pitch_cmd = 0.0
     roll_cmd = 0.0
     stance_width_cmd = 0.25
+    update_counter = 0
     for episode in tqdm(range(num_episodes)):
-        obs = env.reset()  # Initial reset of the environment
+        obs = env.reset()  
         cumulative_reward = 0
 
         for step in range(max_steps_per_episode):
             # Get the state from the environment
-            robot_state = env.get_robot_state()  # Adjust this based on your environment's state representation
+            robot_state = env.get_robot_state()  
             state_vector = np.concatenate([component.cpu().numpy().flatten() for component in robot_state])
+
+            # Calculate relative position from the goal
+            relative_goal_position = np.array(goal_position) - state_vector[:3]  # Assuming first 3 elements are position
+            augmented_state_vector = np.concatenate([state_vector, relative_goal_position])
+            normalized_state_vector = normalize_state_values(augmented_state_vector)
 
             # High-level policy decides the action
             with torch.no_grad():
-                state_tensor = torch.tensor(state_vector, dtype=torch.float32)
+                state_tensor = torch.tensor(normalized_state_vector, dtype=torch.float32)
+                if step == 1:
+                    start_state_tensor = state_tensor
                 action, _ = high_level_policy.act(state_tensor)
                 x_vel_cmd, y_vel_cmd, yaw_vel_cmd = map_continuous_action_to_velocities(action.numpy(), step)
 
@@ -232,27 +249,43 @@ def train_high_level_policy(num_episodes, max_steps_per_episode, goal_position, 
 
             # Execute actions in the environment
             next_obs, rew, done, info = env.step(actions)
-            new_robot_state = env.get_robot_state()
-            new_state_vector = np.concatenate([component.cpu().numpy().flatten() for component in new_robot_state])
             with torch.no_grad():
-                new_state_tensor = torch.tensor(new_state_vector, dtype=torch.float32)
+                new_robot_state = env.get_robot_state()
+                
+                new_state_vector = np.concatenate([component.cpu().numpy().flatten() for component in new_robot_state])
+                relative_goal_position = np.array(goal_position) - new_state_vector[:3]  # Assuming first 3 elements are position
+                augmented_state_vector = np.concatenate([new_state_vector, relative_goal_position])
+                normalized_state_vector = normalize_state_values(augmented_state_vector)
+                new_state_tensor = torch.tensor(normalized_state_vector, dtype=torch.float32)
             # Calculate reward and store transitions
-            reward = calculate_reward(new_state_tensor, goal_position, wall_positions, wall_threshold,step)
+            reward, touchwall = calculate_reward(new_state_tensor, goal_position, wall_positions, wall_threshold,step)
             cumulative_reward += reward
             ppo_trainer.store_transition(state_tensor, action, reward, new_state_tensor, done)
 
-            obs = next_obs  # Update the observation
+            update_counter += 1
+            if update_counter >= batch_size:
+                ppo_trainer.train()  # Train using the internal memory
+                ppo_trainer.memory.clear()  # Clear the memory after training
+                update_counter = 0  # Reset the counter
 
+            obs = next_obs  # Update the observation
+            # if touchwall == 1:
+            #     done = 1
             if done:
                 break
 
         # Update high-level policy at the end of each episode
-        ppo_trainer.train()
+        # ppo_trainer.train()
+        if update_counter > 0:
+            ppo_trainer.train()
+            ppo_trainer.memory.clear()
+            update_counter = 0
         
-        if episode % 50 == 0:  # Save every 100 episodes
+        if episode % 1 == 0:  # Save every episode
             save_model(high_level_policy, ppo_trainer.optimizer, episode, filename=f"model_ep{episode}.pth")
 
         print(f"Episode: {episode}, Total Reward: {cumulative_reward}")
+    return (start_state_tensor)
 
 
 
@@ -270,6 +303,7 @@ wall_positions = [
 
 wall_threshold = 0.5
 # Train the high-level policy
-num_episodes = 500
+num_episodes = 50
 max_steps_per_episode = 750
-train_high_level_policy(num_episodes, max_steps_per_episode, goal_position, wall_positions, wall_threshold)
+start_state = train_high_level_policy(num_episodes, max_steps_per_episode, goal_position, wall_positions, wall_threshold, 256)
+print(start_state)
