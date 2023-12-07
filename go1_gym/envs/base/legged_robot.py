@@ -1671,6 +1671,43 @@ class LeggedRobot(BaseTask):
         self.wall_actor_handles = []
         self.robot_actor_idxs = []
         self.wall_actor_idxs = []
+        self.obstacle_actor_handles = []
+
+
+        def add_obstacle(env, base_position, box_asset_options):
+            # Constants defining the wall boundaries
+            wall_front_x = -0.25
+            wall_back_x = 4.75
+            wall_left_y = -1.0
+            wall_right_y = 1.0
+
+            # Random dimensions for the obstacle, ensuring they fit within the walls
+            obstacle_max_length = 1.5  # Maximum length
+            obstacle_max_width = 1.5   # Maximum width
+            obstacle_length = np.random.uniform(0.5, obstacle_max_length)  # Length between 0.5 and max_length meters
+            obstacle_height = np.random.uniform(0.5, 2.0)  # Height between 0.5 and 2.0 meters
+            obstacle_thickness = np.random.uniform(0.5, obstacle_max_width)  # Thickness between 0.5 and max_width meters
+
+            # Create the obstacle asset
+            obstacle_asset = self.gym.create_box(self.sim, obstacle_thickness, obstacle_height, obstacle_length, box_asset_options)
+
+            # Random position within the environment, ensuring the obstacle starts at minimum x = 1.5 and is within the walls
+            min_x_start = 1.0
+            max_x_end = wall_back_x - obstacle_thickness / 2  # Ensure obstacle does not go beyond the back wall
+            offset_x = np.random.uniform(min_x_start, max_x_end)
+
+            # Ensure obstacle does not go beyond the left and right walls
+            min_y = wall_left_y + obstacle_length / 2
+            max_y = wall_right_y - obstacle_length / 2
+            offset_y = np.random.uniform(min_y, max_y)
+
+            pose = gymapi.Transform()
+            pose.p = gymapi.Vec3(base_position[0] + offset_x, base_position[1] + offset_y, base_position[2] + obstacle_height / 2)
+            pose.r = gymapi.Quat(0, 0, 0, 1)
+
+            obstacle_handle = self.gym.create_actor(env, obstacle_asset, pose, "obstacle", 0, False)
+            return obstacle_handle
+
 
         for i in range(self.num_envs):
             # create env instance
@@ -1717,7 +1754,9 @@ class LeggedRobot(BaseTask):
             wall_handle4 = add_wall(env_handle, env_origin, (4.75, 0.0, wall_height), box_asset2) 
             self.wall_actor_handles.extend([wall_handle1, wall_handle2, wall_handle3, wall_handle4])
             self.wall_actor_idxs.extend([self.gym.get_actor_index(env_handle, wall_handle, gymapi.DOMAIN_SIM) for wall_handle in [wall_handle1, wall_handle2, wall_handle3, wall_handle4]])
-
+            # env_origin = self.env_origins[i].clone()
+            obstacle_handle = add_obstacle(env_handle, env_origin, box_asset_options)
+            self.obstacle_actor_handles.append(obstacle_handle)
 
             # Add walls to the current environment
             
