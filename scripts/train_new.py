@@ -136,29 +136,30 @@ def calculate_reward(state_tensor, goal_position, wall_positions, wall_threshold
     # Scaled distance to the goal
     goal_distance = np.linalg.norm(robot_position - np.array(goal_position))
 
-    # Positive reward for getting closer to the goal
-    # The closer the robot gets to the goal, the larger the positive reward
-    reward = 10 / (goal_distance + 1e-6)  # Use inverse of distance to increase reward as distance decreases
+    # Increase reward as robot gets closer to the goal
+    reward = 100 * np.exp(-goal_distance)  # Exponential increase in reward
 
-    # Penalize for being too close to the walls
+    # Exponential penalty for being too close to walls
     for wall_position in wall_positions:
         wall_distance = np.linalg.norm(robot_position - np.array(wall_position))
         if wall_distance < wall_threshold:
-            reward -= 1000  # Penalty for being too close to walls
+            reward -= 5000 * np.exp(-wall_distance)  # Exponential penalty for being close to walls
             touchwall = 1
 
-    # Step penalty to encourage efficiency
-    reward -= 5  # Penalty for each step taken
+    # Exponential step penalty to encourage efficiency
+    step_penalty = 2 * np.exp(0.005 * step)  # The exponential factor can be adjusted
+    reward -= step_penalty
 
     # Large reward for reaching the goal
     if goal_distance < 0.5:  # Threshold for reaching the goal
-        reward += 1000  # Reward for reaching the goal
+        reward += 5000  # Significant reward for reaching the goal
 
     # Debugging information
     if step % 75 == 0:
-        print(f"Step: {step}, Goal Distance: {goal_distance}, Reward: {reward}")
+        print(f"Step: {step}, Goal Distance: {goal_distance}, Reward: {reward}, Step Penalty: {step_penalty}")
 
     return reward, touchwall
+
 
 
 
